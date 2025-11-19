@@ -1,3 +1,6 @@
+// src/pages/StudentManagement.tsx
+// ⭐️ FINAL FIXED VERSION: Fixed Duplicates & Context-Aware Grade Display ⭐️
+
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { DashboardLayout } from "@/components/Layout/DashboardLayout";
@@ -47,8 +50,7 @@ import {
   UserCheck,
   QrCode,
   Loader2,
-  FileText, // Icon for PDF
-  // Upload, ❌ REMOVED (Unused if Import is gone)
+  FileText, 
 } from "lucide-react";
 import QRCode from "qrcode";
 
@@ -62,7 +64,6 @@ const API_URL = `${API_BASE}/students/`;
 const WS_URL_BASE = `${WS_BASE_URL}/ws/students`;
 const SECTIONS_URL = `${API_BASE}/sections/`;
 const TEACHERS_URL = `${API_BASE}/users/?profile__role=teacher`;
-// const IMPORT_URL = `${API_BASE}/students/import/`; ❌ REMOVED
 const PDF_EXPORT_URL = `${API_BASE}/students/export-pdf/`;
 
 // --- INTERFACES ---
@@ -129,8 +130,6 @@ interface StudentData {
 
 const NO_ADVISER_VALUE = "__NONE__";
 
-// ❌ REMOVED ImportDialog COMPONENT ❌
-
 // --- MAIN COMPONENT ---
 const StudentManagement = () => {
   const [students, setStudents] = useState<StudentData[]>([]);
@@ -154,7 +153,6 @@ const StudentManagement = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [showSectionDialog, setShowSectionDialog] = useState(false);
-  // const [showImportDialog, setShowImportDialog] = useState(false); ❌ REMOVED
   
   const [selectedStudent, setSelectedStudent] = useState<StudentData | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -261,6 +259,14 @@ const StudentManagement = () => {
         } else if (action === "deleted") {
           updatedStudents = updatedStudents.filter((s) => s.id !== student.id);
         }
+        
+        // Filter duplicates here as well just in case
+        const seenIds = new Set();
+        updatedStudents = updatedStudents.filter(s => {
+            if (seenIds.has(s.id)) return false;
+            seenIds.add(s.id);
+            return true;
+        });
 
         updatedStudents.sort(
           (a, b) =>
@@ -330,7 +336,7 @@ const StudentManagement = () => {
     }
   };
 
-  // --- FETCH STUDENTS (With Performance Fix) ---
+  // --- FETCH STUDENTS (With Performance Fix & Deduplication) ---
   const fetchStudents = async () => {
     setLoading(true);
     setHasSearched(true);
@@ -350,7 +356,6 @@ const StudentManagement = () => {
       if (statusFilter !== "all")
         params.append("is_active", statusFilter === "active" ? "true" : "false");
 
-      // Performance Fix: Send search to backend
       if (searchTerm) {
         params.append("search", searchTerm);
       }
@@ -362,7 +367,14 @@ const StudentManagement = () => {
 
       let fetchedStudents = Array.isArray(response.data) ? response.data : [];
       
-      // No frontend filtering needed anymore
+      // ⭐️ FIX 1: Deduplicate results from backend
+      const seenIds = new Set();
+      fetchedStudents = fetchedStudents.filter((student: StudentData) => {
+        if (seenIds.has(student.id)) return false;
+        seenIds.add(student.id);
+        return true;
+      });
+
       fetchedStudents.sort(
         (a: StudentData, b: StudentData) =>
           a.last_name.localeCompare(b.last_name) ||
@@ -603,7 +615,6 @@ const StudentManagement = () => {
     }
   };
 
-  // ⭐️ --- EXPORT PDF FEATURE --- ⭐️
   const exportStudentsPDF = async () => {
     if (finalFilteredStudents.length === 0) {
       toast({ title: "No Data", description: "No students match filters." });
@@ -616,7 +627,6 @@ const StudentManagement = () => {
       const token = localStorage.getItem("access_token");
       if (!token) throw new Error("Authentication token not found.");
 
-      // Build the same params as fetchStudents to get exact match
       const params = new URLSearchParams();
       if (schoolYearFilter !== "all")
         params.append("school_year", schoolYearFilter);
@@ -632,7 +642,7 @@ const StudentManagement = () => {
       const response = await axios.get(PDF_EXPORT_URL, {
         headers: { Authorization: `Bearer ${token}` },
         params: params,
-        responseType: "blob", // Important for file downloads
+        responseType: "blob", 
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -654,9 +664,7 @@ const StudentManagement = () => {
     }
   };
 
-  // --- MEMOIZED HELPERS ---
   const finalFilteredStudents = useMemo(() => {
-    // No more frontend filtering, just return students
     return students;
   }, [students]);
 
@@ -727,10 +735,29 @@ const StudentManagement = () => {
                 </TableRow>
               ) : (
                 studentsList.map((student) => {
-                  const currentAdviser = student.adviser_name || "N/A";
-                  const sectionDisplay = student.section
-                    ? `Grade ${student.grade} - ${student.section.name}`
-                    : `Grade ${student.grade || "N/A"}`;
+                  // ⭐️ FIX 2: Smart Display Logic for Historical Data ⭐️
+                  let displayGrade = student.grade;
+                  let displaySection = student.section ? student.section.name : "";
+                  let displayAdviser = student.adviser_name;
+
+                  // If we are filtering by a SPECIFIC school year (not "all")
+                  // Check the history to find the correct grade/section for THAT year
+                  if (schoolYearFilter !== "all") {
+                    const historyRecord = student.section_history.find(h => h.school_year === schoolYearFilter);
+                    if (historyRecord) {
+                       displayGrade = historyRecord.section.grade;
+                       displaySection = historyRecord.section.name;
+                       displayAdviser = historyRecord.section.adviser_name;
+                    }
+                  }
+
+                  const sectionDisplay = (displayGrade && displaySection)
+                    ? `Grade ${displayGrade} - ${displaySection}`
+                    : `Grade ${displayGrade || "N/A"}`;
+                  
+                  const currentAdviser = displayAdviser || "N/A";
+                  // -------------------------------------------------------
+
                   return (
                     <TableRow key={student.id} className="hover:bg-muted/30 dark:hover:bg-muted/20">
                       <TableCell className="text-center">{student.lrn}</TableCell>
@@ -776,10 +803,24 @@ const StudentManagement = () => {
                </div>
              ) : (
                studentsList.map((student) => {
-                 const currentAdviser = student.adviser_name || "N/A";
-                 const sectionDisplay = student.section
-                   ? `Grade ${student.grade} - ${student.section.name}`
-                   : `Grade ${student.grade || "N/A"}`;
+                 // Apply the same Smart Display Logic here for mobile
+                 let displayGrade = student.grade;
+                 let displaySection = student.section ? student.section.name : "";
+                 let displayAdviser = student.adviser_name;
+
+                 if (schoolYearFilter !== "all") {
+                    const historyRecord = student.section_history.find(h => h.school_year === schoolYearFilter);
+                    if (historyRecord) {
+                       displayGrade = historyRecord.section.grade;
+                       displaySection = historyRecord.section.name;
+                       displayAdviser = historyRecord.section.adviser_name;
+                    }
+                 }
+                 const sectionDisplay = (displayGrade && displaySection)
+                    ? `Grade ${displayGrade} - ${displaySection}`
+                    : `Grade ${displayGrade || "N/A"}`;
+                 const currentAdviser = displayAdviser || "N/A";
+
                  return (
                    <Card key={student.id} className="overflow-hidden">
                      <CardContent className="p-4 space-y-3">
@@ -822,8 +863,6 @@ const StudentManagement = () => {
             <p className="text-muted-foreground">Search and manage student records.</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {/* ⭐️ --- BUTTONS: EXPORT / PDF ONLY (IMPORT REMOVED) --- ⭐️ */}
-            {/* Import Button Removed */}
             <Button variant="outline" onClick={exportStudents} disabled={finalFilteredStudents.length === 0}>
               <Download className="w-4 h-4 mr-2" /> Export CSV
             </Button>
@@ -839,7 +878,7 @@ const StudentManagement = () => {
             </Button>
           </div>
         </div>
-
+        {/* ... Rest of component (Filters, Dialogs, etc. are same as before) ... */}
         {/* Filters */}
         <Card>
           <CardHeader>
