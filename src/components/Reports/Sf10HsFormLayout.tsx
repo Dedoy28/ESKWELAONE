@@ -1,11 +1,13 @@
+// src/components/reports/Sf10HsFormLayout.tsx
+// ⭐️ FIXED: Added missing 'section_history' type definition locally ⭐️
+
 import React from "react";
-import DepEdLogo from "@/assets/deped.png"; // Left logo
-import DepEdLogoRight from "@/assets/depedlogo.png"; // Right logo
+import DepEdLogo from "@/assets/deped.png"; 
+import DepEdLogoRight from "@/assets/depedlogo.png"; 
 
-// Import the updated Student and Grade interface types
-import { Student, Grade } from "@/pages/Reports"; // Or adjust path as needed
+// ⭐️ CHANGED: Only import Grade, NOT Student (we define Student below)
+import { Grade } from "@/pages/Reports"; 
 
-// ⭐️ --- 1. IMPORT MOBILE UI COMPONENTS --- ⭐️
 import {
   Accordion,
   AccordionContent,
@@ -20,27 +22,62 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-// ⭐️ --- END IMPORTS --- ⭐️
 
-// Define the expected props for the component
-interface Sf10HsFormLayoutProps {
-  student: Student | null; // Accept the detailed student object (or null)
+// ⭐️ NEW: Define the Interfaces locally to fix the TypeScript error ⭐️
+interface SectionHistory {
+  id: number;
+  school_year: string;
+  section: {
+    name: string;
+    grade: string;
+    adviser_name: string | null;
+  };
+  is_active: boolean;
 }
 
-// Helper function to safely parse and format grades
+export interface Student {
+  id: number;
+  lrn: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  nameExtension?: string;
+  birth_date?: string;
+  sex: string;
+  
+  // Current Info
+  grade: string;
+  section: string;
+  adviser?: string;
+  general_average?: string;
+
+  // Elementary Info
+  elementarySchool?: string;
+  elementarySchoolId?: string;
+  elementarySchoolAddress?: string;
+  elementaryGenAve?: string | number;
+
+  // Grades Data
+  gradesByYear?: Record<string, Grade[]>;
+
+  // ⭐️ THE MISSING FIELD IS NOW HERE ⭐️
+  section_history?: SectionHistory[];
+}
+
+interface Sf10HsFormLayoutProps {
+  student: Student | null; 
+}
+
+// Helper functions
 const formatGrade = (gradeValue: string | number | null | undefined, decimalPlaces: number = 0): string => {
     if (gradeValue === null || gradeValue === undefined || gradeValue === '') {
         return '';
     }
     const num = Number(gradeValue);
-    if (isNaN(num)) {
-        console.warn("Could not parse grade value:", gradeValue);
-        return '';
-    }
+    if (isNaN(num)) return '';
     return num.toFixed(decimalPlaces);
 };
 
-// Helper function to safely parse a grade to a number or null
 const parseGrade = (gradeValue: string | number | null | undefined): number | null => {
     if (gradeValue === null || gradeValue === undefined || gradeValue === '') {
         return null;
@@ -49,10 +86,7 @@ const parseGrade = (gradeValue: string | number | null | undefined): number | nu
     return isNaN(num) ? null : num;
 }
 
-
-// Corrected Component Name (PascalCase) and accept props
 const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
-  // If no student data, show a placeholder message
   if (!student) {
     return (
       <div className="bg-white shadow-lg rounded-lg p-6 border text-gray-500 text-center print:hidden">
@@ -61,7 +95,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
     );
   }
 
-  // --- Prepare student data with fallbacks ---
   const studentInfo = {
     lastName: student.lastName || 'N/A',
     firstName: student.firstName || 'N/A',
@@ -76,20 +109,16 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
     elemGenAve: student.elementaryGenAve !== null && student.elementaryGenAve !== undefined ? String(student.elementaryGenAve) : 'N/A',
   };
 
-  // --- Updated Learning Areas ---
   const coreLearningAreas = [
     "Filipino", "English", "Mathematics", "Science", "Araling Panlipunan (AP)",
     "Edukasyon sa Pagpapakatao (EsP)", "Technology and Livelihood Education (TLE)",
   ];
   const mapehComponents = ["Music", "Arts", "Physical Education", "Health"];
-  // --- End Updated Learning Areas ---
 
-  // Helper to find grade for a specific subject and year
   const findGrade = (year: string, subject: string): Grade | undefined => {
       return student?.gradesByYear?.[year]?.find(g => g.subject_name === subject);
   }
 
-  // Helper function to calculate MAPEH average for a specific quarter or final
   const calculateMapehAverage = (year: string, field: keyof Omit<Grade, 'subject_name'>): number | null => {
       if (!year || !student.gradesByYear?.[year]) return null;
       const componentGrades = mapehComponents
@@ -98,25 +127,48 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
           .filter(gradeNum => gradeNum !== null) as number[];
       if (componentGrades.length === 0) return null;
       const sum = componentGrades.reduce((acc, val) => acc + val, 0);
-      const average = sum / componentGrades.length;
-      return average;
+      return sum / componentGrades.length;
   }
+
+  // ⭐️ HELPER: Get Historical Section & Adviser ⭐️
+  const getHistoricalSectionData = (targetSchoolYear: string | undefined) => {
+      if (!targetSchoolYear) return { section: 'N/A', adviser: 'N/A' };
+      
+      // Check the section_history array which we defined in the interface above
+      if (student.section_history && Array.isArray(student.section_history)) {
+          const historyRecord = student.section_history.find(h => h.school_year === targetSchoolYear);
+          if (historyRecord) {
+              return {
+                  section: historyRecord.section.name,
+                  adviser: historyRecord.section.adviser_name || 'N/A'
+              };
+          }
+      }
+
+      return { section: 'N/A', adviser: 'N/A' };
+  };
 
   // --- Helper function to render scholastic record for a specific grade level/year
   const renderGradeLevelRecord = (gradeLevel: string, schoolYear: string | undefined) => {
     const displayYear = schoolYear || ''; 
+    
     let sectionName = 'N/A';
-    if (student.section && typeof student.section === 'string') {
-        const sectionMatch = student.section.match(/Grade\s+(\d+)\s*-\s*([^\(]+)/i);
-        if (sectionMatch && sectionMatch[1] === gradeLevel && sectionMatch[2]) {
-            sectionName = sectionMatch[2].trim();
-        } else if (student.grade === gradeLevel) {
-            sectionName = student.section;
+    let adviserName = 'N/A';
+
+    if (displayYear) {
+        // Try to find it in history
+        const historyData = getHistoricalSectionData(displayYear);
+        if (historyData.section !== 'N/A') {
+            sectionName = historyData.section;
+            adviserName = historyData.adviser;
+        } else {
+            // Fallback to current info if it matches the grade
+            if (student.grade === gradeLevel) {
+                 sectionName = student.section || 'N/A';
+                 adviserName = student.adviser || 'N/A';
+            }
         }
-    } else if (student.grade === gradeLevel) {
-        sectionName = String(student.section) || 'N/A';
     }
-    const adviser = student.adviser ?? 'N/A';
 
     return (
         <div className="mb-4 border border-black p-2 break-inside-avoid">
@@ -130,7 +182,7 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
             <div><span className="font-semibold">Classified as Grade:</span> {gradeLevel}</div>
             <div><span className="font-semibold">Section:</span> {sectionName}</div>
             <div><span className="font-semibold">School Year:</span> {displayYear || '____________'}</div>
-            <div className="col-span-2"><span className="font-semibold">Name of Adviser/Teacher:</span> {adviser}</div>
+            <div className="col-span-2"><span className="font-semibold">Name of Adviser/Teacher:</span> {adviserName}</div>
             <div className="col-span-2"><span className="font-semibold">Signature:</span> _________________________</div>
           </div>
 
@@ -258,9 +310,8 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       );
   };
 
-  // --- ⭐️ 2. NEW HELPER FUNCTION FOR MOBILE GRADE TABLE --- ⭐️
+  // --- ⭐️ 2. HELPER FUNCTION FOR MOBILE GRADE TABLE --- ⭐️
   const renderMobileGradeTable = (schoolYear: string) => {
-    // 1. Get Core Subjects
     const coreGrades = coreLearningAreas.map(area => {
       const gradeData = findGrade(schoolYear, area);
       const finalNumeric = parseGrade(gradeData?.final);
@@ -272,7 +323,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       };
     });
 
-    // 2. Get MAPEH Averages
     const mapehFinalAvgNum = calculateMapehAverage(schoolYear, 'final');
     const mapehRemarks = mapehFinalAvgNum !== null ? (mapehFinalAvgNum >= 75 ? "Passed" : "Failed") : "";
     const mapehAvgGrade = {
@@ -281,18 +331,16 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       remarks: mapehRemarks
     };
 
-    // 3. Get MAPEH Components
     const mapehComponentGrades = mapehComponents.map(area => {
       const gradeData = findGrade(schoolYear, area);
       const finalNumeric = parseGrade(gradeData?.final);
       return {
-        name: `  • ${area}`, // Indent component
+        name: `  • ${area}`, 
         final: formatGrade(finalNumeric),
-        remarks: "" // No remarks for components
+        remarks: "" 
       };
     });
 
-    // 4. Get General Average
     const allFinals = [...coreGrades.map(g => parseGrade(g.final)), parseGrade(mapehAvgGrade.final)]
       .filter(f => f !== null) as number[];
     
@@ -311,7 +359,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       remarks: genAveRemarks
     };
 
-    // Combine all rows
     const allRows = [
       ...coreGrades,
       mapehAvgGrade,
@@ -319,7 +366,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       genAveGrade
     ];
 
-    // 5. Render the table
     return (
       <Table className="w-full text-sm">
         <TableHeader>
@@ -347,10 +393,7 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       </Table>
     );
   };
-  // ⭐️ --- END NEW HELPER --- ⭐️
 
-
-  // --- Determine School Years & Grade Mapping ---
   const availableYears = student.gradesByYear ? Object.keys(student.gradesByYear).sort() : [];
   const gradeToYearMap: Record<string, string> = {};
   const studentCurrentGrade = parseInt(student.grade || '0');
@@ -367,21 +410,11 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
       }
   }
 
-  // --- Render the main component structure ---
   return (
     <>
-      {/* =======================================================
-        1. DESKTOP AND PRINT VIEW (Your original code)
-        =======================================================
-        This view is hidden on mobile screens (md:hidden)
-        but is visible on desktop (md:block) AND when printing (print:block).
-      */}
       <div className="hidden md:block print:block bg-white shadow-lg rounded-lg p-4 border text-gray-900 text-[10px] print:text-[9px] print:shadow-none print:border-none print:p-0">
-        {/* Header */}
         <div className="text-center mb-2 relative print:mb-1">
-          {/* ⭐️ MODIFIED: Removed print:w-10 print:h-10 */}
           <img src={DepEdLogo} alt="DepEd Logo" className="w-40 h-20 absolute top-0 left-2" />
-          {/* ⭐️ MODIFIED: Removed print:w-10 print:h-10 */}
           <img src={DepEdLogoRight} alt="DepEd Logo Right" className="w-30 h-20 absolute top-0 right-2" /> 
           <p className="text-[10px] print:text-[9px]">Republic of the Philippines</p>
           <p className="text-sm font-semibold print:text-xs">Department of Education</p>
@@ -392,7 +425,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
 
         <hr className="border-black my-1" />
 
-        {/* Learner's Information */}
         <h3 className="font-bold text-center text-xs mb-0.5 uppercase print:text-[10px]">Learner's Information</h3>
         <div className="grid grid-cols-4 gap-x-2 gap-y-0 text-[10px] print:text-[9px] mb-1 border border-black p-1">
             <div><span className="font-semibold">LAST NAME:</span> {studentInfo.lastName}</div>
@@ -404,7 +436,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
             <div className="col-span-2"><span className="font-semibold">Sex:</span> {studentInfo.sex}</div>
         </div>
 
-        {/* Eligibility */}
         <h3 className="font-bold text-center text-xs mb-0.5 uppercase print:text-[10px]">Eligibility for JHS Enrolment</h3>
         <div className="border border-black p-1 text-[10px] print:text-[9px] mb-1">
           <div className="flex items-center mb-0.5">
@@ -420,7 +451,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
           </div>
         </div>
 
-        {/* Other Credential (Placeholder) */}
         <h3 className="font-bold text-center text-xs mb-0.5 uppercase print:text-[10px]">Other Credential Presented</h3>
          <div className="border border-black p-1 text-[10px] print:text-[9px] mb-2">
              <div className="flex items-center mb-0.5 space-x-2">
@@ -434,23 +464,19 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
              </div>
          </div>
 
-        {/* Scholastic Record Section Title */}
          <h3 className="font-bold text-center text-xs mb-1 uppercase print:text-[10px]">Scholastic Record</h3>
 
-        {/* Render Scholastic Records Dynamically for each grade level */}
         {renderGradeLevelRecord("7", gradeToYearMap["7"])}
         {renderGradeLevelRecord("8", gradeToYearMap["8"])}
         {renderGradeLevelRecord("9", gradeToYearMap["9"])}
         {renderGradeLevelRecord("10", gradeToYearMap["10"])}
 
-
-         {/* Certification Section */}
          <div className="border border-black p-2 mt-1 text-[10px] print:text-[9px] break-inside-avoid">
              <h3 className="font-bold text-center text-[11px] print:text-[10px] mb-0.5 uppercase">Certification</h3>
              <p className="mb-0.5 text-center">
                  I CERTIFY that this is a true record of <span className="font-semibold underline">{studentInfo.firstName} {studentInfo.middleName || ''} {studentInfo.lastName} {studentInfo.nameExtension || ''}</span> with LRN <span className="font-semibold underline">{studentInfo.lrn}</span>
              </p>
-             {(() => { // IIFE to calculate eligibility
+             {(() => {
                  const currentGrade = parseInt(student.grade || '0');
                  const nextGrade = currentGrade + 1;
                  const relevantAverageNum = parseGrade(student.general_average);
@@ -458,7 +484,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
                  const admissionGrade = isEligible ? (nextGrade > 10 ? 'Grade 11' : `Grade ${nextGrade}`) : '_____';
                  return ( <p className="mb-1 text-center">and that he/she is eligible for admission to {admissionGrade}.</p> );
              })()}
-             {/* School details and signature placeholders */}
              <div className="grid grid-cols-3 gap-x-2 mb-1">
                  <div><span className="font-semibold">School:</span> Sindalan NHS</div>
                  <div><span className="font-semibold">School ID:</span> 3009</div>
@@ -479,14 +504,7 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
 
       </div>
 
-      {/* =======================================================
-        2. MOBILE-ONLY VIEW (New Code)
-        =======================================================
-        This view is visible ONLY on mobile screens (md:hidden)
-        and is hidden when printing (print:hidden).
-      */}
       <div className="md:hidden print:hidden space-y-4">
-        {/* Mobile Card: Learner's Info */}
         <div className="bg-white shadow-lg rounded-lg border">
           <h3 className="font-bold text-center text-sm p-3 bg-gray-50 rounded-t-lg">Learner's Information</h3>
           <div className="p-4 space-y-2 text-sm">
@@ -498,7 +516,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
           </div>
         </div>
 
-        {/* Mobile Card: Eligibility */}
         <div className="bg-white shadow-lg rounded-lg border">
             <h3 className="font-bold text-center text-sm p-3 bg-gray-50 rounded-t-lg">Eligibility for JHS</h3>
             <div className="p-4 space-y-2 text-sm">
@@ -509,15 +526,12 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
           </div>
         </div>
 
-        {/* Mobile Accordion: Scholastic Record */}
         <div className="bg-white shadow-lg rounded-lg border">
           <h3 className="font-bold text-center text-sm p-3 bg-gray-50 rounded-t-lg">Scholastic Record</h3>
           {availableYears.length > 0 ? (
             <Accordion type="single" collapsible className="w-full" defaultValue={`grade-${studentCurrentGrade}`}>
-              {/* Map over the 4 grade levels */}
               {["7", "8", "9", "10"].map(gradeLevel => {
                 const year = gradeToYearMap[gradeLevel];
-                // Only render an item if data exists for that year
                 if (!year) {
                   return (
                     <AccordionItem value={`grade-${gradeLevel}`} key={gradeLevel} disabled>
@@ -528,7 +542,6 @@ const Sf10HsFormLayout: React.FC<Sf10HsFormLayoutProps> = ({ student }) => {
                   );
                 }
                 
-                // Render the mobile table inside the accordion
                 return (
                   <AccordionItem value={`grade-${gradeLevel}`} key={gradeLevel}>
                     <AccordionTrigger className="px-4 text-base">
