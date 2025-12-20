@@ -1,5 +1,5 @@
 // src/pages/StudentManagement.tsx
-// ⭐️ FINAL FIXED VERSION: Fixed Duplicates & Context-Aware Grade Display ⭐️
+// ⭐️ FINAL FIXED VERSION: Removed "Grade" Label (Format: "7 - A") ⭐️
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
@@ -100,7 +100,7 @@ interface StudentData {
 
   // Dynamic / Read-only fields
   grade: string | null;
-  section: Section | null;
+  section: Section | null; // This might be null or an object
   adviser_name: string | null;
 
   // History
@@ -260,7 +260,6 @@ const StudentManagement = () => {
           updatedStudents = updatedStudents.filter((s) => s.id !== student.id);
         }
         
-        // Filter duplicates here as well just in case
         const seenIds = new Set();
         updatedStudents = updatedStudents.filter(s => {
             if (seenIds.has(s.id)) return false;
@@ -336,7 +335,7 @@ const StudentManagement = () => {
     }
   };
 
-  // --- FETCH STUDENTS (With Performance Fix & Deduplication) ---
+  // --- FETCH STUDENTS ---
   const fetchStudents = async () => {
     setLoading(true);
     setHasSearched(true);
@@ -346,7 +345,6 @@ const StudentManagement = () => {
 
       const params = new URLSearchParams();
 
-      // Filters
       if (schoolYearFilter !== "all")
         params.append("section_enrollments__school_year", schoolYearFilter);
       if (sectionFilter !== "all")
@@ -367,7 +365,6 @@ const StudentManagement = () => {
 
       let fetchedStudents = Array.isArray(response.data) ? response.data : [];
       
-      // ⭐️ FIX 1: Deduplicate results from backend
       const seenIds = new Set();
       fetchedStudents = fetchedStudents.filter((student: StudentData) => {
         if (seenIds.has(student.id)) return false;
@@ -735,27 +732,34 @@ const StudentManagement = () => {
                 </TableRow>
               ) : (
                 studentsList.map((student) => {
-                  // ⭐️ FIX 2: Smart Display Logic for Historical Data ⭐️
-                  let displayGrade = student.grade;
-                  let displaySection = student.section ? student.section.name : "";
-                  let displayAdviser = student.adviser_name;
+                  
+                  // ⭐️ FIX: Robust Section/Grade Display Logic ⭐️
+                  let displayGrade = student.grade || "N/A";
+                  let displaySection = "N/A";
 
-                  // If we are filtering by a SPECIFIC school year (not "all")
-                  // Check the history to find the correct grade/section for THAT year
+                  if (student.section) {
+                      displaySection = student.section.name;
+                  } else if (student.current_enrollment && student.current_enrollment.section) {
+                      displaySection = student.current_enrollment.section.name;
+                      displayGrade = student.current_enrollment.section.grade || displayGrade;
+                  }
+
+                  let displayAdviser = student.adviser_name || "N/A";
+
+                  // Historical Override logic
                   if (schoolYearFilter !== "all") {
                     const historyRecord = student.section_history.find(h => h.school_year === schoolYearFilter);
                     if (historyRecord) {
                        displayGrade = historyRecord.section.grade;
                        displaySection = historyRecord.section.name;
-                       displayAdviser = historyRecord.section.adviser_name;
+                       displayAdviser = historyRecord.section.adviser_name || "N/A";
                     }
                   }
 
-                  const sectionDisplay = (displayGrade && displaySection)
-                    ? `Grade ${displayGrade} - ${displaySection}`
-                    : `Grade ${displayGrade || "N/A"}`;
-                  
-                  const currentAdviser = displayAdviser || "N/A";
+                  // ⭐️ FORMAT UPDATE: "7 - A" instead of "Grade 7 - A"
+                  const sectionDisplay = (displayGrade && displaySection !== "N/A")
+                    ? `${displayGrade} - ${displaySection}`
+                    : (displayGrade || "N/A");
                   // -------------------------------------------------------
 
                   return (
@@ -764,7 +768,7 @@ const StudentManagement = () => {
                       <TableCell className="text-center">{student.first_name}</TableCell>
                       <TableCell className="text-center">{student.last_name}</TableCell>
                       <TableCell className="text-center"><Badge variant="outline">{sectionDisplay}</Badge></TableCell>
-                      <TableCell className="text-center">{currentAdviser}</TableCell>
+                      <TableCell className="text-center">{displayAdviser}</TableCell>
                       <TableCell className="text-center">{student.email || "N/A"}</TableCell>
                       <TableCell className="text-center">{student.phone || "N/A"}</TableCell>
                       <TableCell className="text-center">
@@ -803,23 +807,33 @@ const StudentManagement = () => {
                </div>
              ) : (
                studentsList.map((student) => {
-                 // Apply the same Smart Display Logic here for mobile
-                 let displayGrade = student.grade;
-                 let displaySection = student.section ? student.section.name : "";
-                 let displayAdviser = student.adviser_name;
+                 
+                 // Apply the same Robust logic here for mobile
+                 let displayGrade = student.grade || "N/A";
+                 let displaySection = "N/A";
+
+                 if (student.section) {
+                     displaySection = student.section.name;
+                 } else if (student.current_enrollment && student.current_enrollment.section) {
+                     displaySection = student.current_enrollment.section.name;
+                     displayGrade = student.current_enrollment.section.grade || displayGrade;
+                 }
+
+                 let displayAdviser = student.adviser_name || "N/A";
 
                  if (schoolYearFilter !== "all") {
                     const historyRecord = student.section_history.find(h => h.school_year === schoolYearFilter);
                     if (historyRecord) {
                        displayGrade = historyRecord.section.grade;
                        displaySection = historyRecord.section.name;
-                       displayAdviser = historyRecord.section.adviser_name;
+                       displayAdviser = historyRecord.section.adviser_name || "N/A";
                     }
                  }
-                 const sectionDisplay = (displayGrade && displaySection)
-                    ? `Grade ${displayGrade} - ${displaySection}`
-                    : `Grade ${displayGrade || "N/A"}`;
-                 const currentAdviser = displayAdviser || "N/A";
+                 
+                 // ⭐️ FORMAT UPDATE HERE TOO
+                 const sectionDisplay = (displayGrade && displaySection !== "N/A")
+                    ? `${displayGrade} - ${displaySection}`
+                    : (displayGrade || "N/A");
 
                  return (
                    <Card key={student.id} className="overflow-hidden">
@@ -835,7 +849,7 @@ const StudentManagement = () => {
                        </div>
                        <div className="space-y-1 text-sm">
                           <div className="flex justify-between"><span className="text-muted-foreground">Section:</span> <span>{sectionDisplay}</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Adviser:</span> <span>{currentAdviser}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Adviser:</span> <span>{displayAdviser}</span></div>
                        </div>
                        <div className="flex gap-2 pt-3 border-t">
                           <Button variant="outline" size="sm" className="flex-1" onClick={() => openViewDialog(student)}><Eye className="w-4 h-4 mr-2"/> View</Button>
@@ -878,7 +892,7 @@ const StudentManagement = () => {
             </Button>
           </div>
         </div>
-        {/* ... Rest of component (Filters, Dialogs, etc. are same as before) ... */}
+        
         {/* Filters */}
         <Card>
           <CardHeader>
@@ -1004,13 +1018,13 @@ const StudentManagement = () => {
               <div>
                 <Label>Adviser Name (Optional)</Label>
                 <Select value={sectionFormData.adviser_name || NO_ADVISER_VALUE} onValueChange={(val) => setSectionFormData({...sectionFormData, adviser_name: val === NO_ADVISER_VALUE ? "" : val})}>
-                   <SelectTrigger className={!sectionFormData.adviser_name || sectionFormData.adviser_name === NO_ADVISER_VALUE ? "text-muted-foreground" : ""}>
-                     <SelectValue placeholder="Select Adviser" />
-                   </SelectTrigger>
-                   <SelectContent>
-                     <SelectItem value={NO_ADVISER_VALUE}>-- None --</SelectItem>
-                     {loadingTeachers ? <SelectItem value="loading" disabled>Loading...</SelectItem> : teachers.length === 0 ? <SelectItem value="no-teachers" disabled>No teachers</SelectItem> : teachers.map(t => <SelectItem key={t.id} value={`${t.last_name}, ${t.first_name}`}>{t.last_name}, {t.first_name} ({t.username})</SelectItem>)}
-                   </SelectContent>
+                    <SelectTrigger className={!sectionFormData.adviser_name || sectionFormData.adviser_name === NO_ADVISER_VALUE ? "text-muted-foreground" : ""}>
+                      <SelectValue placeholder="Select Adviser" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_ADVISER_VALUE}>-- None --</SelectItem>
+                      {loadingTeachers ? <SelectItem value="loading" disabled>Loading...</SelectItem> : teachers.length === 0 ? <SelectItem value="no-teachers" disabled>No teachers</SelectItem> : teachers.map(t => <SelectItem key={t.id} value={`${t.last_name}, ${t.first_name}`}>{t.last_name}, {t.first_name} ({t.username})</SelectItem>)}
+                    </SelectContent>
                 </Select>
               </div>
               <DialogFooter>
@@ -1029,47 +1043,48 @@ const StudentManagement = () => {
 
         <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
            <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{selectedStudent?.last_name}, {selectedStudent?.first_name}</DialogTitle><DialogDescription>Student Details</DialogDescription></DialogHeader>
-              {selectedStudent && (
-                <div className="space-y-5 py-4 text-sm">
-                   <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Personal Information</h3>
+             <DialogHeader><DialogTitle>{selectedStudent?.last_name}, {selectedStudent?.first_name}</DialogTitle><DialogDescription>Student Details</DialogDescription></DialogHeader>
+             {selectedStudent && (
+               <div className="space-y-5 py-4 text-sm">
+                  <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Personal Information</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                      <div><span className="text-muted-foreground block text-xs font-medium">LRN</span> {selectedStudent.lrn}</div>
+                      <div><span className="text-muted-foreground block text-xs font-medium">Gender</span> {selectedStudent.gender}</div>
+                      <div><span className="text-muted-foreground block text-xs font-medium">Birth Date</span> {selectedStudent.birth_date ? new Date(selectedStudent.birth_date + 'T00:00:00').toLocaleDateString() : 'N/A'}</div>
+                      <div className="sm:col-span-2"><span className="text-muted-foreground block text-xs font-medium">Address</span> {selectedStudent.address || 'N/A'}</div>
+                    </div>
+                  </section>
+                  <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Current Enrollment</h3>
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                       <div><span className="text-muted-foreground block text-xs font-medium">LRN</span> {selectedStudent.lrn}</div>
-                       <div><span className="text-muted-foreground block text-xs font-medium">Gender</span> {selectedStudent.gender}</div>
-                       <div><span className="text-muted-foreground block text-xs font-medium">Birth Date</span> {selectedStudent.birth_date ? new Date(selectedStudent.birth_date + 'T00:00:00').toLocaleDateString() : 'N/A'}</div>
-                       <div className="sm:col-span-2"><span className="text-muted-foreground block text-xs font-medium">Address</span> {selectedStudent.address || 'N/A'}</div>
+                       {/* ⭐️ FORMAT UPDATE: Removed "Grade " prefix here too */}
+                       <div><span className="text-muted-foreground block text-xs font-medium">Grade & Section</span> {selectedStudent.section ? `${selectedStudent.grade} - ${selectedStudent.section.name}` : `${selectedStudent.grade || 'N/A'}`}</div>
+                       <div><span className="text-muted-foreground block text-xs font-medium">Adviser</span> {selectedStudent.adviser_name || 'N/A'}</div>
+                       <div><span className="text-muted-foreground block text-xs font-medium">School Year</span> {selectedStudent.current_enrollment?.school_year || 'N/A'}</div>
+                       <div><span className="text-muted-foreground block text-xs font-medium">Status</span> <Badge variant={(selectedStudent.is_active ?? true) ? 'default':'secondary'} className="text-xs font-normal">{(selectedStudent.is_active ?? true) ? 'Active' : 'Inactive'}</Badge></div>
                      </div>
-                   </section>
-                   <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Current Enrollment</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                        <div><span className="text-muted-foreground block text-xs font-medium">Grade & Section</span> {selectedStudent.section ? `Grade ${selectedStudent.grade} - ${selectedStudent.section.name}` : `Grade ${selectedStudent.grade || 'N/A'}`}</div>
-                        <div><span className="text-muted-foreground block text-xs font-medium">Adviser</span> {selectedStudent.adviser_name || 'N/A'}</div>
-                        <div><span className="text-muted-foreground block text-xs font-medium">School Year</span> {selectedStudent.current_enrollment?.school_year || 'N/A'}</div>
-                        <div><span className="text-muted-foreground block text-xs font-medium">Status</span> <Badge variant={(selectedStudent.is_active ?? true) ? 'default':'secondary'} className="text-xs font-normal">{(selectedStudent.is_active ?? true) ? 'Active' : 'Inactive'}</Badge></div>
-                      </div>
-                   </section>
-                   <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Enrollment History</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                        {selectedStudent.section_history && selectedStudent.section_history.length > 0 ? selectedStudent.section_history.map(e => (
-                           <div key={e.id}><span className="text-muted-foreground block text-xs font-medium">{e.school_year}</span> Grade {e.section.grade} - {e.section.name} {e.is_active && <Badge variant="outline" className="ml-2">Current</Badge>}</div>
-                        )) : <p className="text-muted-foreground">No history found.</p>}
-                      </div>
-                   </section>
-                   <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Contact & Guardian</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                        <div><span className="text-muted-foreground block text-xs font-medium">Email</span> {selectedStudent.email || 'N/A'}</div>
-                        <div><span className="text-muted-foreground block text-xs font-medium">Phone</span> {selectedStudent.phone || 'N/A'}</div>
-                        <div><span className="text-muted-foreground block text-xs font-medium">Guardian Name</span> {selectedStudent.guardian_name}</div>
-                        <div><span className="text-muted-foreground block text-xs font-medium">Guardian Phone</span> {selectedStudent.guardian_phone}</div>
-                      </div>
-                   </section>
-                </div>
-              )}
-              <DialogFooter className="mt-2 pt-4 border-t">
-                <Button variant="outline" onClick={() => setShowViewDialog(false)}>Close</Button>
-                <Button variant="secondary" onClick={() => generateQRCode(selectedStudent)}><QrCode className="w-4 h-4 mr-2"/> QR Code</Button>
-                <Button onClick={() => { setShowViewDialog(false); openEditDialog(selectedStudent!); }} disabled={!selectedStudent}><Edit className="w-4 h-4 mr-2"/> Edit</Button>
-              </DialogFooter>
+                  </section>
+                  <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Enrollment History</h3>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                       {selectedStudent.section_history && selectedStudent.section_history.length > 0 ? selectedStudent.section_history.map(e => (
+                          <div key={e.id}><span className="text-muted-foreground block text-xs font-medium">{e.school_year}</span> {e.section.grade} - {e.section.name} {e.is_active && <Badge variant="outline" className="ml-2">Current</Badge>}</div>
+                       )) : <p className="text-muted-foreground">No history found.</p>}
+                     </div>
+                  </section>
+                  <section><h3 className="font-semibold text-base border-b pb-1 mb-3 text-primary">Contact & Guardian</h3>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                       <div><span className="text-muted-foreground block text-xs font-medium">Email</span> {selectedStudent.email || 'N/A'}</div>
+                       <div><span className="text-muted-foreground block text-xs font-medium">Phone</span> {selectedStudent.phone || 'N/A'}</div>
+                       <div><span className="text-muted-foreground block text-xs font-medium">Guardian Name</span> {selectedStudent.guardian_name}</div>
+                       <div><span className="text-muted-foreground block text-xs font-medium">Guardian Phone</span> {selectedStudent.guardian_phone}</div>
+                     </div>
+                  </section>
+               </div>
+             )}
+             <DialogFooter className="mt-2 pt-4 border-t">
+               <Button variant="outline" onClick={() => setShowViewDialog(false)}>Close</Button>
+               <Button variant="secondary" onClick={() => generateQRCode(selectedStudent)}><QrCode className="w-4 h-4 mr-2"/> QR Code</Button>
+               <Button onClick={() => { setShowViewDialog(false); openEditDialog(selectedStudent!); }} disabled={!selectedStudent}><Edit className="w-4 h-4 mr-2"/> Edit</Button>
+             </DialogFooter>
            </DialogContent>
         </Dialog>
       </div>

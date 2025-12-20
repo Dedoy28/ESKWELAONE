@@ -1,5 +1,5 @@
 // src/pages/Clinic.tsx
-// ⭐️ FULLY UPDATED AND FINALIZED FILE ⭐️
+// ⭐️ FULLY UPDATED AND FINALIZED FILE (Fixed Grade/Section Display) ⭐️
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { DashboardLayout } from "@/components/Layout/DashboardLayout";
@@ -20,29 +20,26 @@ import { useNavigate, useParams } from "react-router-dom";
 
 // Get the base WebSocket URL from environment variables
 const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
-// Use the correct Clinic WebSocket URL from your config
 const WS_URL_PATH = "/ws/clinic/";
 
 
 // --- ⭐️ UPDATED INTERFACES ⭐️ ---
 
-// This is the nested student object, from SimpleStudentSerializer
 interface SimpleStudent {
   id: number;
-  lrn: string; // ⬅️ FIX: Was student_id
+  lrn: string;
   first_name: string;
   last_name: string;
-  current_grade: string | null;
-  current_section_name: string | null;
+  current_grade: string | null;       // Data is likely here
+  current_section_name: string | null; // Data is likely here
 }
 
-// This is the main ClinicVisit object from ClinicVisitSerializer
 interface ClinicVisit {
   id: number;
-  student: SimpleStudent; // ⬅️ FIX: Uses new SimpleStudent interface
-  grade: string; // ⬅️ FIX: This is sent at the top level
-  section_name: string; // ⬅️ FIX: This is sent at the top level
-  visit_date: string; // This is a DateTime string
+  student: SimpleStudent;
+  grade: string;        // Might be null from backend
+  section_name: string; // Might be null from backend
+  visit_date: string;
   illness: string;
   treatment?: string;
   treatment_details?: string;
@@ -50,17 +47,15 @@ interface ClinicVisit {
   attended_by?: string;
 }
 
-// This interface is built from the correct ClinicVisit
 interface GroupedClinicVisit {
   student_id: number;
-  student_lrn: string; // ⬅️ FIX: Added LRN
+  student_lrn: string;
   student_display: string;
   grade: string;
   section_name: string;
   visits: ClinicVisit[];
 }
 
-// This is used for the StudentHistory page header
 interface StudentInfo {
   id: number;
   lrn: string;
@@ -109,7 +104,7 @@ const ClinicList = () => {
     }
   };
 
-  // Setup WebSocket connection (Your fix was correct)
+  // Setup WebSocket connection
   const setupWebSocket = () => {
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);
@@ -123,7 +118,6 @@ const ClinicList = () => {
       return;
     }
     
-    // This now uses the WS_BASE_URL from the top of the file
     const fullWsUrl = `${WS_BASE_URL}${WS_URL_PATH}?token=${token}`;
     ws.current = new WebSocket(fullWsUrl);
 
@@ -209,23 +203,26 @@ const ClinicList = () => {
     }
   }, [updatedRow]);
 
-  // ⭐️ --- UPDATED Grouping Logic --- ⭐️
+  // ⭐️ --- UPDATED Grouping Logic (FIXED N/A) --- ⭐️
   const groupedVisits = useMemo(() => {
     const map: Record<number, GroupedClinicVisit> = {};
     visits.forEach((v) => {
-      // ⬅️ FIX: Check the new, correct data structure
       if (!v || !v.student || !v.student.id) {
         console.warn("Skipping incomplete visit in grouping:", v);
         return;
       }
       const studentId = v.student.id;
       if (!map[studentId]) {
+        // ⭐️ FIX: Check Top Level AND Nested Level for Grade/Section
+        const displayGrade = v.grade || v.student.current_grade || "N/A";
+        const displaySection = v.section_name || v.student.current_section_name || "N/A";
+
         map[studentId] = {
           student_id: studentId,
-          student_lrn: v.student.lrn, // ⬅️ FIX: Get LRN
+          student_lrn: v.student.lrn,
           student_display: `${v.student.last_name}, ${v.student.first_name}`,
-          grade: v.grade || "N/A", // ⬅️ FIX: Get grade from top level
-          section_name: v.section_name || "N/A", // ⬅️ FIX: Get section_name from top level
+          grade: displayGrade,
+          section_name: displaySection,
           visits: [],
         };
       }
@@ -242,7 +239,7 @@ const ClinicList = () => {
     const searchLower = search.toLowerCase().trim();
     return groupedVisits.filter((g) => {
       if (g.student_display.toLowerCase().includes(searchLower)) return true;
-      if (g.student_lrn.toLowerCase().includes(searchLower)) return true; // ⬅️ FIX: Search by LRN
+      if (g.student_lrn.toLowerCase().includes(searchLower)) return true;
       return g.visits.some(
         (v) =>
           (v.illness?.toLowerCase() || "").includes(searchLower) ||
@@ -282,7 +279,7 @@ const ClinicList = () => {
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <Input
-            placeholder="Search by student, LRN, illness, grade..." // ⬅️ FIX: Updated placeholder
+            placeholder="Search by student, LRN, illness, grade..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 max-w-md"
@@ -310,7 +307,7 @@ const ClinicList = () => {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-2 text-left font-semibold">Student</th>
-                        <th className="p-2 text-left font-semibold">LRN</th> {/* ⬅️ FIX: Added LRN Column */}
+                        <th className="p-2 text-left font-semibold">LRN</th>
                         <th className="p-2 text-center font-semibold">Grade & Section</th>
                         <th className="p-2 text-center font-semibold">Visits</th>
                         <th className="p-2 text-center font-semibold">Actions</th>
@@ -330,10 +327,10 @@ const ClinicList = () => {
                             <span className="font-medium">{g.student_display}</span>
                           </td>
                           <td className="p-2 text-left text-muted-foreground">
-                            {g.student_lrn} {/* ⬅️ FIX: Render LRN */}
+                            {g.student_lrn}
                           </td>
                           <td className="p-2 text-center">
-                            <Badge variant="outline">{g.grade} - {g.section_name || "N/A"}</Badge> {/* ⬅️ FIX: Render new fields */}
+                            <Badge variant="outline">{g.grade} - {g.section_name || "N/A"}</Badge>
                           </td>
                           <td className="p-2 text-center">{g.visits.length}</td>
                           <td className="p-2 text-center">
@@ -366,9 +363,9 @@ const ClinicList = () => {
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <span className="font-bold">{g.student_display}</span>
-                          <p className="text-sm text-muted-foreground">{g.student_lrn}</p> {/* ⬅️ FIX: Added LRN */}
+                          <p className="text-sm text-muted-foreground">{g.student_lrn}</p>
                         </div>
-                        <Badge variant="outline">{g.grade} - {g.section_name || "N/A"}</Badge> {/* ⬅️ FIX: Render new fields */}
+                        <Badge variant="outline">{g.grade} - {g.section_name || "N/A"}</Badge>
                       </div>
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">Total Visits: {g.visits.length}</span>
@@ -418,35 +415,35 @@ const StudentHistory: React.FC<{ student_pk: string }> = ({ student_pk }) => {
     const fetchStudentHistory = async () => {
       setLoading(true);
       try {
-        // ⬅️ FIX: Fetch visits AND student data in parallel
         const visitsPromise = api.get(`/clinic-visits/?student=${student_pk}`);
         const studentPromise = api.get(`/students/${student_pk}/`);
         
         const [visitsResponse, studentResponse] = await Promise.all([visitsPromise, studentPromise]);
         
         const visitsData: ClinicVisit[] = visitsResponse.data || [];
-        const studentData = studentResponse.data; // This is StudentData from StudentManagement
+        const studentData = studentResponse.data;
 
         setVisits(visitsData);
 
-        // ⬅️ FIX: Set student info from the reliable /students/ endpoint
+        // Prioritize data from /students/, otherwise try to get it from visits
         if (studentData) {
            setStudentInfo({
             id: studentData.id,
             lrn: studentData.lrn,
             display: `${studentData.last_name}, ${studentData.first_name}`,
-            grade: studentData.grade, // Uses the dynamic field
-            section_name: studentData.section?.name || null, // Uses the dynamic field
+            grade: studentData.grade, 
+            section_name: studentData.section?.name || null,
           });
         } else if (visitsData.length > 0) {
-          // Fallback just in case /students/ fails but /clinic-visits/ works
+          // Fallback logic for History view as well
           const firstVisit = visitsData[0];
           setStudentInfo({
             id: firstVisit.student.id,
             lrn: firstVisit.student.lrn,
             display: `${firstVisit.student.last_name}, ${firstVisit.student.first_name}`,
-            grade: firstVisit.grade,
-            section_name: firstVisit.section_name,
+            // ⭐️ FIX: Check both top level and nested
+            grade: firstVisit.grade || firstVisit.student.current_grade,
+            section_name: firstVisit.section_name || firstVisit.student.current_section_name,
           });
         } else {
            toast({ title: "No Records", description: "No student or clinic visits found." });
@@ -560,9 +557,9 @@ const StudentHistory: React.FC<{ student_pk: string }> = ({ student_pk }) => {
               </h1>
               {studentInfo ? (
                 <div className="text-muted-foreground text-lg">
-                  {studentInfo.display} (LRN: {studentInfo.lrn}) {/* ⬅️ FIX: Added LRN */}
+                  {studentInfo.display} (LRN: {studentInfo.lrn})
                   <Badge variant="outline" className="ml-2">
-                    {studentInfo.grade} - {studentInfo.section_name} {/* ⬅️ FIX: Use new fields */}
+                    {studentInfo.grade} - {studentInfo.section_name}
                   </Badge>
                 </div>
               ) : (
@@ -590,10 +587,10 @@ const StudentHistory: React.FC<{ student_pk: string }> = ({ student_pk }) => {
             <div className="pb-4 border-b">
               <h2 className="text-xl font-bold">{studentInfo.display}</h2>
               <p className="text-base text-muted-foreground">
-                LRN: {studentInfo.lrn} {/* ⬅️ FIX: Added LRN */}
+                LRN: {studentInfo.lrn}
               </p>
               <p className="text-base text-muted-foreground">
-                {studentInfo.grade} - {studentInfo.section_name} {/* ⬅️ FIX: Use new fields */}
+                {studentInfo.grade} - {studentInfo.section_name}
               </p>
               <h1 className="text-2xl font-bold text-center mt-4">
                 Clinic Visit Report
